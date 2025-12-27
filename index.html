@@ -147,18 +147,20 @@
         
         <div id="ui">
             <div>🦴 Treats: <span id="treatCount">0</span></div>
+            <div>⚡ Speed: <span id="speedBonus">100</span>%</div>
         </div>
         
         <div id="powerUpIndicator">⚡ SUPER SPEED! ⚡</div>
         
         <div id="instructions">
-            🎮 Arrow Keys / WASD to move | SPACE to jump | Explore and collect treats!
+            🎮 Arrow Keys / WASD to move | SPACE to jump | Jump over streams & logs | Collect treats for speed!
         </div>
         
         <div id="startScreen">
             <h1>🐕 Whippet's Adventure 🐕</h1>
-            <p>You're a speedy whippet exploring the endless UK countryside! 
-            Collect treats, grab power-ups to run faster, and jump over fallen trees!</p>
+            <p>You're a speedy whippet exploring the endless rolling UK countryside! 
+            Collect treats for permanent speed boosts, grab power-ups, jump over streams and logs, 
+            and meet sheep and butterflies along the way!</p>
             <button class="startBtn" onclick="startGame()">Start Game</button>
         </div>
         
@@ -188,13 +190,37 @@
             trees: [],
             flowers: [],
             bushes: [],
-            rocks: []
+            rocks: [],
+            waterStreams: [],
+            sheep: [],
+            butterflies: [],
+            hayBales: [],
+            stoneFences: [],
+            mushrooms: []
         };
         
         // World settings
         const WORLD_HEIGHT = 650;
         const GROUND_HEIGHT = 130;
-        const GROUND_Y = WORLD_HEIGHT - GROUND_HEIGHT;
+        const BASE_GROUND_Y = WORLD_HEIGHT - GROUND_HEIGHT;
+        const GROUND_Y = BASE_GROUND_Y; // Keep for compatibility
+        
+        // Terrain generation - creates rolling hills
+        function getTerrainHeight(x) {
+            // Combine multiple sine waves for natural rolling hills
+            const hill1 = Math.sin(x / 600) * 35;  // Large gentle hills
+            const hill2 = Math.sin(x / 250) * 20;  // Medium undulations
+            const hill3 = Math.sin(x / 100) * 8;   // Small bumps
+            const hill4 = Math.sin(x / 1200) * 50; // Very large rolling hills
+            return BASE_GROUND_Y - hill1 - hill2 - hill3 - hill4;
+        }
+        
+        // Get terrain height at player position (for collision)
+        function getTerrainHeightAtPlayer(x) {
+            // Sample multiple points under the player for smoother collision
+            const centerHeight = getTerrainHeight(x);
+            return centerHeight;
+        }
         
         // Camera - keeps dog central
         let camera = { x: 0, y: 0 };
@@ -208,11 +234,12 @@
         // Whippet (player) - facing right by default (1), left is (-1)
         const whippet = {
             x: 0,
-            y: GROUND_Y - 55,
+            y: BASE_GROUND_Y - 55,
             width: 80,
             height: 55,
             velocityX: 0,
             velocityY: 0,
+            baseSpeed: 6,
             speed: 6,
             jumpPower: 14,
             onGround: true,
@@ -259,13 +286,15 @@
         function initGame() {
             // Reset whippet
             whippet.x = 0;
-            whippet.y = GROUND_Y - 55;
+            whippet.y = getTerrainHeight(0) - 55;
             whippet.velocityX = 0;
             whippet.velocityY = 0;
             whippet.powered = false;
             whippet.powerTimer = 0;
             whippet.facing = 1;
             whippet.runCycle = 0;
+            whippet.baseSpeed = 6;
+            whippet.speed = 6;
             
             // Reset collections
             treatsCollected = 0;
@@ -280,7 +309,13 @@
                 trees: [],
                 flowers: [],
                 bushes: [],
-                rocks: []
+                rocks: [],
+                waterStreams: [],
+                sheep: [],
+                butterflies: [],
+                hayBales: [],
+                stoneFences: [],
+                mushrooms: []
             };
             
             // Generate initial clouds
@@ -339,8 +374,9 @@
             // Generate trees (background)
             const numTrees = 3 + Math.floor(seededRandom(seed + 1) * 4);
             for (let i = 0; i < numTrees; i++) {
+                const treeX = startX + seededRandom(seed + 10 + i) * CHUNK_SIZE;
                 worldObjects.trees.push({
-                    x: startX + seededRandom(seed + 10 + i) * CHUNK_SIZE,
+                    x: treeX,
                     height: 120 + seededRandom(seed + 20 + i) * 80,
                     width: 70 + seededRandom(seed + 30 + i) * 50,
                     type: seededRandom(seed + 40 + i) > 0.5 ? 'oak' : 'pine'
@@ -350,9 +386,11 @@
             // Generate bushes
             const numBushes = 2 + Math.floor(seededRandom(seed + 100) * 4);
             for (let i = 0; i < numBushes; i++) {
+                const bushX = startX + seededRandom(seed + 110 + i) * CHUNK_SIZE;
+                const terrainY = getTerrainHeight(bushX);
                 worldObjects.bushes.push({
-                    x: startX + seededRandom(seed + 110 + i) * CHUNK_SIZE,
-                    y: GROUND_Y - 15 - seededRandom(seed + 120 + i) * 10,
+                    x: bushX,
+                    y: terrainY - 15 - seededRandom(seed + 120 + i) * 10,
                     width: 40 + seededRandom(seed + 130 + i) * 30,
                     height: 25 + seededRandom(seed + 140 + i) * 15
                 });
@@ -362,9 +400,11 @@
             const numFlowers = 8 + Math.floor(seededRandom(seed + 200) * 12);
             for (let i = 0; i < numFlowers; i++) {
                 const colors = ['#E74C3C', '#F1C40F', '#9B59B6', '#E91E63', '#FF9800', '#E8F5E9'];
+                const flowerX = startX + seededRandom(seed + 210 + i) * CHUNK_SIZE;
+                const terrainY = getTerrainHeight(flowerX);
                 worldObjects.flowers.push({
-                    x: startX + seededRandom(seed + 210 + i) * CHUNK_SIZE,
-                    y: GROUND_Y + 5 + seededRandom(seed + 220 + i) * 15,
+                    x: flowerX,
+                    y: terrainY + 5 + seededRandom(seed + 220 + i) * 15,
                     color: colors[Math.floor(seededRandom(seed + 230 + i) * colors.length)],
                     size: 3 + seededRandom(seed + 240 + i) * 4,
                     stemHeight: 8 + seededRandom(seed + 250 + i) * 12
@@ -374,9 +414,11 @@
             // Generate rocks
             const numRocks = Math.floor(seededRandom(seed + 300) * 3);
             for (let i = 0; i < numRocks; i++) {
+                const rockX = startX + 100 + seededRandom(seed + 310 + i) * (CHUNK_SIZE - 200);
+                const terrainY = getTerrainHeight(rockX);
                 worldObjects.rocks.push({
-                    x: startX + 100 + seededRandom(seed + 310 + i) * (CHUNK_SIZE - 200),
-                    y: GROUND_Y - 8,
+                    x: rockX,
+                    y: terrainY - 8,
                     width: 20 + seededRandom(seed + 320 + i) * 25,
                     height: 12 + seededRandom(seed + 330 + i) * 15
                 });
@@ -385,11 +427,95 @@
             // Generate obstacles (fallen trees) - not too close together
             if (seededRandom(seed + 400) > 0.4) {
                 const obsX = startX + 200 + seededRandom(seed + 410) * (CHUNK_SIZE - 400);
+                const terrainY = getTerrainHeight(obsX);
                 worldObjects.obstacles.push({
                     x: obsX,
-                    y: GROUND_Y - 35,
+                    y: terrainY - 35,
                     width: 100 + seededRandom(seed + 420) * 40,
                     height: 35
+                });
+            }
+            
+            // Generate water streams (jumpable obstacles)
+            if (seededRandom(seed + 450) > 0.6) {
+                const streamX = startX + 300 + seededRandom(seed + 451) * (CHUNK_SIZE - 400);
+                worldObjects.waterStreams.push({
+                    x: streamX,
+                    width: 60 + seededRandom(seed + 452) * 40,
+                    flowOffset: seededRandom(seed + 453) * Math.PI * 2
+                });
+            }
+            
+            // Generate sheep (grazing animals)
+            if (seededRandom(seed + 700) > 0.5) {
+                const numSheep = 1 + Math.floor(seededRandom(seed + 701) * 3);
+                const baseX = startX + 100 + seededRandom(seed + 702) * (CHUNK_SIZE - 300);
+                for (let i = 0; i < numSheep; i++) {
+                    const sheepX = baseX + i * (40 + seededRandom(seed + 703 + i) * 30);
+                    const terrainY = getTerrainHeight(sheepX);
+                    worldObjects.sheep.push({
+                        x: sheepX,
+                        y: terrainY - 25,
+                        facing: seededRandom(seed + 710 + i) > 0.5 ? 1 : -1,
+                        grazePhase: seededRandom(seed + 720 + i) * Math.PI * 2,
+                        legPhase: seededRandom(seed + 730 + i) * Math.PI * 2
+                    });
+                }
+            }
+            
+            // Generate butterflies
+            const numButterflies = Math.floor(seededRandom(seed + 800) * 4);
+            for (let i = 0; i < numButterflies; i++) {
+                const butterflyX = startX + seededRandom(seed + 810 + i) * CHUNK_SIZE;
+                const terrainY = getTerrainHeight(butterflyX);
+                worldObjects.butterflies.push({
+                    x: butterflyX,
+                    y: terrainY - 40 - seededRandom(seed + 820 + i) * 60,
+                    baseX: butterflyX,
+                    baseY: terrainY - 40 - seededRandom(seed + 820 + i) * 60,
+                    wingPhase: seededRandom(seed + 830 + i) * Math.PI * 2,
+                    color: ['#FF6B9D', '#FFD93D', '#6BCB77', '#4D96FF'][Math.floor(seededRandom(seed + 840 + i) * 4)],
+                    flutterOffset: seededRandom(seed + 850 + i) * Math.PI * 2
+                });
+            }
+            
+            // Generate hay bales
+            if (seededRandom(seed + 900) > 0.6) {
+                const numHayBales = 1 + Math.floor(seededRandom(seed + 901) * 2);
+                for (let i = 0; i < numHayBales; i++) {
+                    const hayX = startX + 150 + seededRandom(seed + 910 + i) * (CHUNK_SIZE - 300);
+                    const terrainY = getTerrainHeight(hayX);
+                    worldObjects.hayBales.push({
+                        x: hayX,
+                        y: terrainY - 25,
+                        size: 30 + seededRandom(seed + 920 + i) * 15
+                    });
+                }
+            }
+            
+            // Generate stone fences
+            if (seededRandom(seed + 1000) > 0.65) {
+                const fenceX = startX + 100 + seededRandom(seed + 1001) * (CHUNK_SIZE - 200);
+                const terrainY = getTerrainHeight(fenceX);
+                worldObjects.stoneFences.push({
+                    x: fenceX,
+                    y: terrainY - 30,
+                    width: 80 + seededRandom(seed + 1002) * 60,
+                    height: 30
+                });
+            }
+            
+            // Generate mushrooms
+            const numMushrooms = Math.floor(seededRandom(seed + 1100) * 6);
+            for (let i = 0; i < numMushrooms; i++) {
+                const mushX = startX + seededRandom(seed + 1110 + i) * CHUNK_SIZE;
+                const terrainY = getTerrainHeight(mushX);
+                const mushTypes = ['red', 'brown', 'white'];
+                worldObjects.mushrooms.push({
+                    x: mushX,
+                    y: terrainY,
+                    size: 4 + seededRandom(seed + 1120 + i) * 6,
+                    type: mushTypes[Math.floor(seededRandom(seed + 1130 + i) * mushTypes.length)]
                 });
             }
             
@@ -397,12 +523,19 @@
             const numTreats = 2 + Math.floor(seededRandom(seed + 500) * 3);
             for (let i = 0; i < numTreats; i++) {
                 let tx = startX + 50 + seededRandom(seed + 510 + i) * (CHUNK_SIZE - 100);
-                let ty = GROUND_Y - 25 - seededRandom(seed + 520 + i) * 80;
+                const terrainY = getTerrainHeight(tx);
+                let ty = terrainY - 25 - seededRandom(seed + 520 + i) * 80;
                 
-                // Check not on obstacle
+                // Check not on obstacle or water
                 let valid = true;
                 for (let obs of worldObjects.obstacles) {
                     if (Math.abs(tx - obs.x - obs.width/2) < obs.width/2 + 30) {
+                        valid = false;
+                        break;
+                    }
+                }
+                for (let stream of worldObjects.waterStreams) {
+                    if (tx > stream.x - 10 && tx < stream.x + stream.width + 10) {
                         valid = false;
                         break;
                     }
@@ -420,9 +553,11 @@
             
             // Generate power-ups (rare)
             if (seededRandom(seed + 600) > 0.7) {
+                const puX = startX + 100 + seededRandom(seed + 610) * (CHUNK_SIZE - 200);
+                const terrainY = getTerrainHeight(puX);
                 worldObjects.powerUps.push({
-                    x: startX + 100 + seededRandom(seed + 610) * (CHUNK_SIZE - 200),
-                    y: GROUND_Y - 60 - seededRandom(seed + 620) * 60,
+                    x: puX,
+                    y: terrainY - 60 - seededRandom(seed + 620) * 60,
                     collected: false,
                     bobOffset: seededRandom(seed + 630) * Math.PI * 2,
                     rotation: 0
@@ -432,6 +567,10 @@
         
         function updateUI() {
             document.getElementById('treatCount').textContent = treatsCollected;
+            
+            // Show speed bonus percentage (100% base + 1.5% per treat)
+            const speedPercent = Math.round(100 * (1 + 0.015 * treatsCollected));
+            document.getElementById('speedBonus').textContent = speedPercent;
             
             const powerIndicator = document.getElementById('powerUpIndicator');
             powerIndicator.style.display = whippet.powered ? 'block' : 'none';
@@ -466,15 +605,20 @@
             whippet.x += whippet.velocityX;
             whippet.y += whippet.velocityY;
             
-            // Ground collision
-            if (whippet.y >= GROUND_Y - whippet.height) {
-                whippet.y = GROUND_Y - whippet.height;
+            // Terrain-based ground collision
+            const terrainY = getTerrainHeightAtPlayer(whippet.x + whippet.width / 2);
+            if (whippet.y >= terrainY - whippet.height) {
+                whippet.y = terrainY - whippet.height;
                 whippet.velocityY = 0;
                 whippet.onGround = true;
             }
             
-            // Obstacle collision
+            // Obstacle collision (fallen logs)
             for (let obs of worldObjects.obstacles) {
+                // Update obstacle y position based on terrain
+                const obsTerrainY = getTerrainHeight(obs.x + obs.width/2);
+                obs.y = obsTerrainY - obs.height;
+                
                 if (whippet.x + whippet.width - 10 > obs.x && 
                     whippet.x + 10 < obs.x + obs.width &&
                     whippet.y + whippet.height > obs.y &&
@@ -497,6 +641,68 @@
                 }
             }
             
+            // Stone fence collision (can jump over)
+            for (let fence of worldObjects.stoneFences) {
+                const fenceTerrainY = getTerrainHeight(fence.x + fence.width/2);
+                fence.y = fenceTerrainY - fence.height;
+                
+                if (whippet.x + whippet.width - 10 > fence.x && 
+                    whippet.x + 10 < fence.x + fence.width &&
+                    whippet.y + whippet.height > fence.y &&
+                    whippet.y < fence.y + fence.height) {
+                    
+                    if (whippet.velocityY > 0 && whippet.y + whippet.height - whippet.velocityY <= fence.y + 5) {
+                        whippet.y = fence.y - whippet.height;
+                        whippet.velocityY = 0;
+                        whippet.onGround = true;
+                    } else if (whippet.onGround || whippet.velocityY <= 0) {
+                        if (whippet.velocityX > 0) {
+                            whippet.x = fence.x - whippet.width + 10;
+                        } else if (whippet.velocityX < 0) {
+                            whippet.x = fence.x + fence.width - 10;
+                        }
+                    }
+                }
+            }
+            
+            // Water stream collision - slows down if touching, need to jump over
+            for (let stream of worldObjects.waterStreams) {
+                const streamTerrainY = getTerrainHeight(stream.x + stream.width/2);
+                if (whippet.x + whippet.width - 15 > stream.x && 
+                    whippet.x + 15 < stream.x + stream.width &&
+                    whippet.y + whippet.height > streamTerrainY - 10 &&
+                    whippet.onGround) {
+                    // In water - slow down and create splash particles
+                    whippet.velocityX *= 0.5;
+                    if (Math.abs(whippet.velocityX) > 0.5 && Math.random() > 0.7) {
+                        particles.push({
+                            x: whippet.x + whippet.width/2 + (Math.random() - 0.5) * 20,
+                            y: streamTerrainY,
+                            vx: (Math.random() - 0.5) * 3,
+                            vy: -2 - Math.random() * 3,
+                            life: 20,
+                            color: '#87CEEB'
+                        });
+                    }
+                }
+            }
+            
+            // Update butterflies (animated movement)
+            for (let butterfly of worldObjects.butterflies) {
+                butterfly.wingPhase += 0.3;
+                butterfly.x = butterfly.baseX + Math.sin(Date.now() / 1000 + butterfly.flutterOffset) * 30;
+                butterfly.y = butterfly.baseY + Math.sin(Date.now() / 800 + butterfly.flutterOffset * 2) * 20;
+            }
+            
+            // Update sheep (gentle grazing animation)
+            for (let sheep of worldObjects.sheep) {
+                sheep.grazePhase += 0.02;
+                sheep.legPhase += 0.05;
+                // Update y position based on terrain
+                const sheepTerrainY = getTerrainHeight(sheep.x);
+                sheep.y = sheepTerrainY - 25;
+            }
+            
             // Collect treats
             for (let treat of worldObjects.treats) {
                 if (!treat.collected) {
@@ -505,6 +711,10 @@
                     if (Math.sqrt(dx*dx + dy*dy) < 40) {
                         treat.collected = true;
                         treatsCollected++;
+                        
+                        // 1.5% speed increase for every treat collected
+                        whippet.speed = whippet.baseSpeed * (1 + 0.015 * treatsCollected);
+                        
                         // Create particles
                         for (let i = 0; i < 12; i++) {
                             particles.push({
@@ -1042,25 +1252,61 @@
                 }
             });
             
-            // Ground layers
-            // Base ground
-            const groundGradient = ctx.createLinearGradient(0, GROUND_Y, 0, WORLD_HEIGHT);
-            groundGradient.addColorStop(0, '#7CB342');
-            groundGradient.addColorStop(0.15, '#689F38');
-            groundGradient.addColorStop(0.4, '#558B2F');
-            groundGradient.addColorStop(1, '#33691E');
-            ctx.fillStyle = groundGradient;
-            ctx.fillRect(0, GROUND_Y, canvas.width, GROUND_HEIGHT);
+            // Ground layers - Undulating terrain with hills
+            // Draw the terrain shape
+            ctx.fillStyle = '#7CB342';
+            ctx.beginPath();
+            ctx.moveTo(0, WORLD_HEIGHT);
+            for (let x = 0; x <= canvas.width + 5; x += 5) {
+                const worldX = x + camera.x;
+                const terrainY = getTerrainHeight(worldX);
+                ctx.lineTo(x, terrainY);
+            }
+            ctx.lineTo(canvas.width, WORLD_HEIGHT);
+            ctx.closePath();
+            ctx.fill();
             
-            // Ground texture variation
+            // Darker layer below surface
+            ctx.fillStyle = '#558B2F';
+            ctx.beginPath();
+            ctx.moveTo(0, WORLD_HEIGHT);
+            for (let x = 0; x <= canvas.width + 5; x += 5) {
+                const worldX = x + camera.x;
+                const terrainY = getTerrainHeight(worldX) + 15;
+                ctx.lineTo(x, terrainY);
+            }
+            ctx.lineTo(canvas.width, WORLD_HEIGHT);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Even darker soil layer
+            ctx.fillStyle = '#33691E';
+            ctx.beginPath();
+            ctx.moveTo(0, WORLD_HEIGHT);
+            for (let x = 0; x <= canvas.width + 5; x += 5) {
+                const worldX = x + camera.x;
+                const terrainY = getTerrainHeight(worldX) + 40;
+                ctx.lineTo(x, terrainY);
+            }
+            ctx.lineTo(canvas.width, WORLD_HEIGHT);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Ground texture variation - follows terrain
             for (let x = 0; x < canvas.width; x += 60) {
                 const worldX = x + camera.x;
                 const variation = seededRandom(Math.floor(worldX / 60) * 100) * 0.15;
+                const terrainY = getTerrainHeight(worldX);
                 ctx.fillStyle = `rgba(0, 50, 0, ${variation})`;
-                ctx.fillRect(x, GROUND_Y, 60, 20);
+                ctx.beginPath();
+                ctx.moveTo(x, terrainY);
+                ctx.lineTo(x + 60, getTerrainHeight(worldX + 60));
+                ctx.lineTo(x + 60, getTerrainHeight(worldX + 60) + 20);
+                ctx.lineTo(x, terrainY + 20);
+                ctx.fill();
             }
             
-            // Grass blades
+            // Grass blades - follow terrain
             ctx.strokeStyle = '#5D8A31';
             ctx.lineWidth = 1.5;
             for (let x = 0; x < canvas.width; x += 8) {
@@ -1068,42 +1314,99 @@
                 const grassSeed = Math.floor(worldX / 8);
                 const grassHeight = 6 + seededRandom(grassSeed) * 8;
                 const sway = Math.sin(worldX / 30 + Date.now() / 800) * 2;
+                const terrainY = getTerrainHeight(worldX);
                 
                 ctx.beginPath();
-                ctx.moveTo(x, GROUND_Y);
-                ctx.quadraticCurveTo(x + sway, GROUND_Y - grassHeight/2, x + sway * 1.5, GROUND_Y - grassHeight);
+                ctx.moveTo(x, terrainY);
+                ctx.quadraticCurveTo(x + sway, terrainY - grassHeight/2, x + sway * 1.5, terrainY - grassHeight);
                 ctx.stroke();
             }
             
-            // Bushes (background)
+            // Bushes (background) - follow terrain
             worldObjects.bushes.forEach(bush => {
                 const bx = bush.x - camera.x;
+                const bushTerrainY = getTerrainHeight(bush.x);
                 if (bx > -bush.width && bx < canvas.width + bush.width) {
-                    drawBush(bx, bush.y, bush.width, bush.height);
+                    drawBush(bx, bushTerrainY - 15, bush.width, bush.height);
                 }
             });
             
-            // Flowers
+            // Flowers - follow terrain
             worldObjects.flowers.forEach(flower => {
                 const fx = flower.x - camera.x;
+                const flowerTerrainY = getTerrainHeight(flower.x);
                 if (fx > -10 && fx < canvas.width + 10) {
-                    drawFlower(fx, flower.y, flower.color, flower.size, flower.stemHeight);
+                    drawFlower(fx, flowerTerrainY + 5, flower.color, flower.size, flower.stemHeight);
                 }
             });
             
             // Rocks
             worldObjects.rocks.forEach(rock => {
                 const rx = rock.x - camera.x;
+                const rockTerrainY = getTerrainHeight(rock.x);
                 if (rx > -rock.width && rx < canvas.width + rock.width) {
-                    drawRock(rx, rock.y, rock.width, rock.height);
+                    drawRock(rx, rockTerrainY - 8, rock.width, rock.height);
+                }
+            });
+            
+            // Water streams
+            worldObjects.waterStreams.forEach(stream => {
+                const sx = stream.x - camera.x;
+                if (sx > -stream.width - 20 && sx < canvas.width + 20) {
+                    drawWaterStream(sx, stream.x, stream.width, stream.flowOffset);
+                }
+            });
+            
+            // Mushrooms
+            worldObjects.mushrooms.forEach(mushroom => {
+                const mx = mushroom.x - camera.x;
+                const mushTerrainY = getTerrainHeight(mushroom.x);
+                if (mx > -20 && mx < canvas.width + 20) {
+                    drawMushroom(mx, mushTerrainY, mushroom.size, mushroom.type);
+                }
+            });
+            
+            // Hay bales
+            worldObjects.hayBales.forEach(hay => {
+                const hx = hay.x - camera.x;
+                const hayTerrainY = getTerrainHeight(hay.x);
+                if (hx > -hay.size * 2 && hx < canvas.width + hay.size * 2) {
+                    drawHayBale(hx, hayTerrainY - hay.size, hay.size);
+                }
+            });
+            
+            // Stone fences
+            worldObjects.stoneFences.forEach(fence => {
+                const fx = fence.x - camera.x;
+                const fenceTerrainY = getTerrainHeight(fence.x + fence.width/2);
+                if (fx > -fence.width && fx < canvas.width + fence.width) {
+                    drawStoneFence(fx, fenceTerrainY - fence.height, fence.width, fence.height);
+                }
+            });
+            
+            // Sheep
+            worldObjects.sheep.forEach(sheep => {
+                const sheepX = sheep.x - camera.x;
+                const sheepTerrainY = getTerrainHeight(sheep.x);
+                if (sheepX > -50 && sheepX < canvas.width + 50) {
+                    drawSheep(sheepX, sheepTerrainY - 25, sheep.facing, sheep.grazePhase, sheep.legPhase);
+                }
+            });
+            
+            // Butterflies
+            worldObjects.butterflies.forEach(butterfly => {
+                const bx = butterfly.x - camera.x;
+                if (bx > -30 && bx < canvas.width + 30) {
+                    drawButterfly(bx, butterfly.y, butterfly.wingPhase, butterfly.color);
                 }
             });
             
             // Fallen tree obstacles
             worldObjects.obstacles.forEach(obs => {
                 const ox = obs.x - camera.x;
+                const obsTerrainY = getTerrainHeight(obs.x + obs.width/2);
                 if (ox > -obs.width - 50 && ox < canvas.width + 50) {
-                    drawFallenLog(ox, obs.y, obs.width, obs.height);
+                    drawFallenLog(ox, obsTerrainY - obs.height, obs.width, obs.height);
                 }
             });
             
@@ -1141,7 +1444,7 @@
             });
             ctx.globalAlpha = 1;
             
-            // Foreground grass overlay
+            // Foreground grass overlay - follows terrain
             ctx.strokeStyle = '#4A7C25';
             ctx.lineWidth = 2;
             for (let x = 0; x < canvas.width; x += 25) {
@@ -1150,10 +1453,11 @@
                 if (seededRandom(grassSeed) > 0.6) {
                     const grassHeight = 12 + seededRandom(grassSeed + 1) * 10;
                     const sway = Math.sin(worldX / 25 + Date.now() / 600) * 3;
+                    const terrainY = getTerrainHeight(worldX);
                     
                     ctx.beginPath();
-                    ctx.moveTo(x, GROUND_Y + 5);
-                    ctx.quadraticCurveTo(x + sway, GROUND_Y - grassHeight/2, x + sway * 1.5, GROUND_Y - grassHeight);
+                    ctx.moveTo(x, terrainY + 5);
+                    ctx.quadraticCurveTo(x + sway, terrainY - grassHeight/2, x + sway * 1.5, terrainY - grassHeight);
                     ctx.stroke();
                 }
             }
@@ -1529,6 +1833,442 @@
             ctx.moveTo(4, 0);
             ctx.quadraticCurveTo(8, wingY - 4, 12, wingY);
             ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        function drawWaterStream(screenX, worldX, width, flowOffset) {
+            const terrainY = getTerrainHeight(worldX + width/2);
+            
+            // Water bed (darker underneath)
+            ctx.fillStyle = '#5D4E37';
+            ctx.beginPath();
+            ctx.moveTo(screenX - 5, terrainY + 8);
+            for (let i = 0; i <= width + 10; i += 5) {
+                const bedY = terrainY + 5 + Math.sin(i / 10 + worldX / 50) * 2;
+                ctx.lineTo(screenX + i - 5, bedY);
+            }
+            ctx.lineTo(screenX + width + 5, terrainY + 15);
+            ctx.lineTo(screenX - 5, terrainY + 15);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Main water body with flowing animation
+            const waterGrad = ctx.createLinearGradient(screenX, terrainY - 5, screenX, terrainY + 5);
+            waterGrad.addColorStop(0, 'rgba(100, 180, 220, 0.9)');
+            waterGrad.addColorStop(0.5, 'rgba(70, 150, 200, 0.85)');
+            waterGrad.addColorStop(1, 'rgba(50, 120, 170, 0.8)');
+            ctx.fillStyle = waterGrad;
+            
+            ctx.beginPath();
+            ctx.moveTo(screenX - 3, terrainY + 3);
+            for (let i = 0; i <= width + 6; i += 4) {
+                const waveY = terrainY - 2 + Math.sin((i + Date.now() / 200 + flowOffset) / 8) * 2;
+                ctx.lineTo(screenX + i - 3, waveY);
+            }
+            ctx.lineTo(screenX + width + 3, terrainY + 5);
+            ctx.lineTo(screenX - 3, terrainY + 5);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Surface reflections/ripples
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 1;
+            for (let i = 5; i < width - 5; i += 15) {
+                const rippleX = screenX + i + Math.sin(Date.now() / 300 + i) * 3;
+                const rippleY = terrainY - 1 + Math.sin(Date.now() / 200 + i / 5) * 1;
+                ctx.beginPath();
+                ctx.moveTo(rippleX, rippleY);
+                ctx.lineTo(rippleX + 8 + Math.random() * 4, rippleY);
+                ctx.stroke();
+            }
+            
+            // Bank edges
+            ctx.fillStyle = '#6B8E23';
+            ctx.beginPath();
+            ctx.ellipse(screenX, terrainY, 8, 4, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(screenX + width, terrainY, 8, 4, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Small rocks in stream
+            ctx.fillStyle = '#7A7A7A';
+            for (let i = 10; i < width - 10; i += 25) {
+                if (seededRandom(worldX + i) > 0.6) {
+                    ctx.beginPath();
+                    ctx.ellipse(screenX + i, terrainY + 1, 4, 3, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+        
+        function drawSheep(x, y, facing, grazePhase, legPhase) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(facing, 1);
+            
+            const headBob = Math.sin(grazePhase) * 3;
+            const legMove = Math.sin(legPhase) * 2;
+            
+            // Shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.beginPath();
+            ctx.ellipse(0, 25, 20, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Legs (black)
+            ctx.fillStyle = '#2C2C2C';
+            // Back legs
+            ctx.fillRect(-12, 12 + legMove, 4, 13);
+            ctx.fillRect(-4, 12 - legMove * 0.5, 4, 13);
+            // Front legs
+            ctx.fillRect(6, 12 - legMove, 4, 13);
+            ctx.fillRect(14, 12 + legMove * 0.5, 4, 13);
+            
+            // Hooves
+            ctx.fillStyle = '#1A1A1A';
+            ctx.fillRect(-13, 23 + legMove, 6, 3);
+            ctx.fillRect(-5, 23 - legMove * 0.5, 6, 3);
+            ctx.fillRect(5, 23 - legMove, 6, 3);
+            ctx.fillRect(13, 23 + legMove * 0.5, 6, 3);
+            
+            // Body (fluffy wool)
+            const woolGrad = ctx.createRadialGradient(0, 5, 0, 0, 5, 25);
+            woolGrad.addColorStop(0, '#FAFAFA');
+            woolGrad.addColorStop(0.7, '#E8E8E8');
+            woolGrad.addColorStop(1, '#D0D0D0');
+            ctx.fillStyle = woolGrad;
+            
+            // Main body wool
+            ctx.beginPath();
+            ctx.ellipse(0, 5, 22, 15, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Wool texture bumps
+            ctx.fillStyle = '#F5F5F5';
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                const bumpX = Math.cos(angle) * 15;
+                const bumpY = 5 + Math.sin(angle) * 10;
+                ctx.beginPath();
+                ctx.arc(bumpX, bumpY, 6 + Math.sin(i) * 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Head
+            ctx.fillStyle = '#1A1A1A';
+            ctx.beginPath();
+            ctx.ellipse(24, -2 + headBob, 10, 8, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Face details
+            ctx.fillStyle = '#F0F0F0';
+            ctx.beginPath();
+            ctx.ellipse(26, -1 + headBob, 4, 3, 0.1, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Eyes
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(22, -5 + headBob, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(22, -5 + headBob, 0.8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Ears
+            ctx.fillStyle = '#2C2C2C';
+            ctx.beginPath();
+            ctx.ellipse(18, -8 + headBob, 5, 3, -0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(20, -9 + headBob, 5, 3, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Tail
+            ctx.fillStyle = '#E8E8E8';
+            ctx.beginPath();
+            ctx.ellipse(-22, 0, 6, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        function drawButterfly(x, y, wingPhase, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            const wingAngle = Math.sin(wingPhase) * 0.6;
+            
+            // Wings
+            ctx.fillStyle = color;
+            
+            // Left wings
+            ctx.save();
+            ctx.rotate(-wingAngle);
+            ctx.beginPath();
+            ctx.ellipse(-8, -3, 10, 6, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(-6, 4, 7, 4, -0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            
+            // Right wings
+            ctx.save();
+            ctx.rotate(wingAngle);
+            ctx.beginPath();
+            ctx.ellipse(8, -3, 10, 6, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(6, 4, 7, 4, 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            
+            // Wing patterns
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.save();
+            ctx.rotate(-wingAngle);
+            ctx.beginPath();
+            ctx.arc(-8, -3, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            ctx.save();
+            ctx.rotate(wingAngle);
+            ctx.beginPath();
+            ctx.arc(8, -3, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            
+            // Body
+            ctx.fillStyle = '#2C2C2C';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 2, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Head
+            ctx.beginPath();
+            ctx.arc(0, -9, 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Antennae
+            ctx.strokeStyle = '#2C2C2C';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-1, -10);
+            ctx.quadraticCurveTo(-4, -15, -5, -14);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(1, -10);
+            ctx.quadraticCurveTo(4, -15, 5, -14);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        function drawHayBale(x, y, size) {
+            ctx.save();
+            
+            // Shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.beginPath();
+            ctx.ellipse(x + 3, y + size + 3, size * 0.9, size * 0.3, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Main bale (cylindrical hay bale)
+            const hayGrad = ctx.createLinearGradient(x - size, y, x + size, y + size);
+            hayGrad.addColorStop(0, '#D4A84B');
+            hayGrad.addColorStop(0.3, '#C9983F');
+            hayGrad.addColorStop(0.7, '#B8872E');
+            hayGrad.addColorStop(1, '#A07624');
+            ctx.fillStyle = hayGrad;
+            
+            // Cylinder body
+            ctx.beginPath();
+            ctx.ellipse(x, y, size * 0.8, size * 0.4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillRect(x - size * 0.8, y, size * 1.6, size);
+            ctx.beginPath();
+            ctx.ellipse(x, y + size, size * 0.8, size * 0.4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Straw texture lines
+            ctx.strokeStyle = '#8B7355';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 12; i++) {
+                const lineX = x - size * 0.7 + i * (size * 1.4 / 11);
+                ctx.beginPath();
+                ctx.moveTo(lineX, y + 5);
+                ctx.lineTo(lineX + (Math.random() - 0.5) * 3, y + size - 5);
+                ctx.stroke();
+            }
+            
+            // Highlight on top
+            ctx.fillStyle = 'rgba(255, 220, 150, 0.3)';
+            ctx.beginPath();
+            ctx.ellipse(x - size * 0.2, y - size * 0.1, size * 0.3, size * 0.15, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Binding strings
+            ctx.strokeStyle = '#5D4037';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(x, y + size * 0.33, size * 0.82, size * 0.25, 0, 0, Math.PI);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(x, y + size * 0.66, size * 0.82, size * 0.25, 0, 0, Math.PI);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        function drawStoneFence(x, y, width, height) {
+            ctx.save();
+            
+            // Shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.beginPath();
+            ctx.moveTo(x + 5, y + height + 3);
+            ctx.lineTo(x + width + 5, y + height + 3);
+            ctx.lineTo(x + width + 8, y + height + 8);
+            ctx.lineTo(x + 8, y + height + 8);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Base layer of stones
+            const stoneColors = ['#8B8B8B', '#7A7A7A', '#9A9A9A', '#6B6B6B'];
+            let stoneX = x;
+            let row = 0;
+            
+            while (stoneX < x + width) {
+                const stoneWidth = 15 + seededRandom(stoneX * 100 + row) * 15;
+                const stoneHeight = height / 2 - 2 + seededRandom(stoneX * 50 + row) * 6;
+                const stoneY = y + (row % 2) * (height / 2);
+                
+                // Stone gradient
+                const stoneGrad = ctx.createLinearGradient(stoneX, stoneY, stoneX + stoneWidth, stoneY + stoneHeight);
+                stoneGrad.addColorStop(0, stoneColors[Math.floor(seededRandom(stoneX * 77) * 4)]);
+                stoneGrad.addColorStop(0.5, '#888888');
+                stoneGrad.addColorStop(1, '#666666');
+                ctx.fillStyle = stoneGrad;
+                
+                // Draw stone
+                ctx.beginPath();
+                ctx.moveTo(stoneX + 2, stoneY + stoneHeight);
+                ctx.lineTo(stoneX + 1, stoneY + 3);
+                ctx.quadraticCurveTo(stoneX + stoneWidth/2, stoneY - 2, stoneX + stoneWidth - 1, stoneY + 3);
+                ctx.lineTo(stoneX + stoneWidth - 2, stoneY + stoneHeight);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Stone highlight
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.beginPath();
+                ctx.ellipse(stoneX + stoneWidth * 0.3, stoneY + stoneHeight * 0.3, stoneWidth * 0.2, stoneHeight * 0.15, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                stoneX += stoneWidth - 2;
+                row++;
+            }
+            
+            // Top stones (smaller)
+            stoneX = x + 3;
+            while (stoneX < x + width - 10) {
+                const stoneWidth = 12 + seededRandom(stoneX * 33) * 10;
+                const stoneHeight = 8 + seededRandom(stoneX * 44) * 5;
+                
+                ctx.fillStyle = stoneColors[Math.floor(seededRandom(stoneX * 88) * 4)];
+                ctx.beginPath();
+                ctx.ellipse(stoneX + stoneWidth/2, y - stoneHeight/2 + 2, stoneWidth/2, stoneHeight/2, 0, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Highlight
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.beginPath();
+                ctx.arc(stoneX + stoneWidth * 0.4, y - stoneHeight/2, 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                stoneX += stoneWidth + 2;
+            }
+            
+            // Moss patches
+            ctx.fillStyle = '#6B8E23';
+            for (let i = 0; i < 3; i++) {
+                const mossX = x + 10 + seededRandom(x + i * 100) * (width - 20);
+                const mossY = y + height - 5 - seededRandom(x + i * 200) * 10;
+                ctx.beginPath();
+                ctx.ellipse(mossX, mossY, 6 + seededRandom(x + i) * 4, 3, 0, Math.PI, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            ctx.restore();
+        }
+        
+        function drawMushroom(x, y, size, type) {
+            ctx.save();
+            
+            // Stem
+            ctx.fillStyle = '#F5F5DC';
+            ctx.beginPath();
+            ctx.moveTo(x - size * 0.3, y);
+            ctx.quadraticCurveTo(x - size * 0.35, y - size * 0.8, x - size * 0.2, y - size);
+            ctx.lineTo(x + size * 0.2, y - size);
+            ctx.quadraticCurveTo(x + size * 0.35, y - size * 0.8, x + size * 0.3, y);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Stem shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.beginPath();
+            ctx.ellipse(x + size * 0.1, y - size * 0.5, size * 0.1, size * 0.3, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Cap colors based on type
+            let capColor, spotColor;
+            if (type === 'red') {
+                capColor = '#DC3545';
+                spotColor = '#FFFFFF';
+            } else if (type === 'brown') {
+                capColor = '#8B4513';
+                spotColor = '#D2B48C';
+            } else {
+                capColor = '#F8F8FF';
+                spotColor = '#E8E8E8';
+            }
+            
+            // Cap
+            const capGrad = ctx.createRadialGradient(x - size * 0.2, y - size * 1.3, 0, x, y - size, size);
+            capGrad.addColorStop(0, capColor);
+            capGrad.addColorStop(1, type === 'white' ? '#D0D0D0' : '#4A2510');
+            ctx.fillStyle = capGrad;
+            
+            ctx.beginPath();
+            ctx.ellipse(x, y - size, size * 0.8, size * 0.5, 0, Math.PI, Math.PI * 2);
+            ctx.fill();
+            
+            // Cap underside
+            ctx.fillStyle = '#E8DCC8';
+            ctx.beginPath();
+            ctx.ellipse(x, y - size, size * 0.7, size * 0.15, 0, 0, Math.PI);
+            ctx.fill();
+            
+            // Spots (for red and brown mushrooms)
+            if (type === 'red' || type === 'brown') {
+                ctx.fillStyle = spotColor;
+                const spotPositions = [
+                    { ox: -0.3, oy: -1.2, r: 0.15 },
+                    { ox: 0.2, oy: -1.3, r: 0.12 },
+                    { ox: 0.4, oy: -1.1, r: 0.1 },
+                    { ox: -0.5, oy: -1.1, r: 0.08 }
+                ];
+                spotPositions.forEach(spot => {
+                    ctx.beginPath();
+                    ctx.arc(x + spot.ox * size, y + spot.oy * size, spot.r * size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
             
             ctx.restore();
         }
