@@ -153,13 +153,13 @@
         <div id="powerUpIndicator">⚡ SUPER SPEED! ⚡</div>
         
         <div id="instructions">
-            🎮 Arrow Keys / WASD to move | SPACE to jump | Jump over streams & logs | Collect treats for speed!
+            🎮 Arrow Keys / WASD to move | SPACE to jump | Leap over rivers & streams | Collect treats for speed!
         </div>
         
         <div id="startScreen">
             <h1>🐕 Whippet's Adventure 🐕</h1>
             <p>You're a speedy whippet exploring the endless rolling UK countryside! 
-            Collect treats for permanent speed boosts, grab power-ups, jump over streams and logs, 
+            Run through forests, leap over streams and rivers, collect treats for speed boosts, 
             and meet sheep and butterflies along the way!</p>
             <button class="startBtn" onclick="startGame()">Start Game</button>
         </div>
@@ -192,11 +192,13 @@
             bushes: [],
             rocks: [],
             waterStreams: [],
+            rivers: [],
             sheep: [],
             butterflies: [],
             hayBales: [],
             stoneFences: [],
-            mushrooms: []
+            mushrooms: [],
+            forestTrees: []
         };
         
         // World settings
@@ -205,14 +207,23 @@
         const BASE_GROUND_Y = WORLD_HEIGHT - GROUND_HEIGHT;
         const GROUND_Y = BASE_GROUND_Y; // Keep for compatibility
         
-        // Terrain generation - creates rolling hills
+        // Terrain generation - creates rolling hills with limits
         function getTerrainHeight(x) {
             // Combine multiple sine waves for natural rolling hills
-            const hill1 = Math.sin(x / 600) * 35;  // Large gentle hills
-            const hill2 = Math.sin(x / 250) * 20;  // Medium undulations
-            const hill3 = Math.sin(x / 100) * 8;   // Small bumps
-            const hill4 = Math.sin(x / 1200) * 50; // Very large rolling hills
-            return BASE_GROUND_Y - hill1 - hill2 - hill3 - hill4;
+            const hill1 = Math.sin(x / 600) * 25;  // Large gentle hills
+            const hill2 = Math.sin(x / 250) * 15;  // Medium undulations
+            const hill3 = Math.sin(x / 100) * 5;   // Small bumps
+            const hill4 = Math.sin(x / 1200) * 35; // Very large rolling hills
+            
+            // Calculate base height
+            let height = BASE_GROUND_Y - hill1 - hill2 - hill3 - hill4;
+            
+            // Clamp to prevent going too low or too high
+            const minHeight = WORLD_HEIGHT - 200; // Don't go below this
+            const maxHeight = WORLD_HEIGHT - 80;  // Don't go above this
+            height = Math.max(maxHeight, Math.min(minHeight, height));
+            
+            return height;
         }
         
         // Get terrain height at player position (for collision)
@@ -220,6 +231,33 @@
             // Sample multiple points under the player for smoother collision
             const centerHeight = getTerrainHeight(x);
             return centerHeight;
+        }
+        
+        // Check if position is in a forest zone
+        function isForestZone(x) {
+            // Create forest zones every ~2000-4000 pixels with varying sizes
+            const zoneSize = 800;
+            const zoneSeed = Math.floor(x / 2500);
+            const zoneStart = zoneSeed * 2500 + seededRandom(zoneSeed * 111) * 500;
+            const zoneEnd = zoneStart + 600 + seededRandom(zoneSeed * 222) * 400;
+            return x >= zoneStart && x <= zoneEnd && seededRandom(zoneSeed * 333) > 0.4;
+        }
+        
+        // Check if position is in a river zone
+        function isRiverZone(x) {
+            const zoneSeed = Math.floor(x / 3500);
+            const zoneStart = zoneSeed * 3500 + 1000 + seededRandom(zoneSeed * 444) * 500;
+            const zoneEnd = zoneStart + 150 + seededRandom(zoneSeed * 555) * 100;
+            return x >= zoneStart && x <= zoneEnd && seededRandom(zoneSeed * 666) > 0.5;
+        }
+        
+        // Get river depth at position (for visual effect)
+        function getRiverDepth(x, riverStart, riverEnd) {
+            const riverCenter = (riverStart + riverEnd) / 2;
+            const riverWidth = riverEnd - riverStart;
+            const distFromCenter = Math.abs(x - riverCenter);
+            const normalizedDist = distFromCenter / (riverWidth / 2);
+            return Math.max(0, 1 - normalizedDist * normalizedDist) * 20;
         }
         
         // Camera - keeps dog central
@@ -241,7 +279,7 @@
             velocityY: 0,
             baseSpeed: 6,
             speed: 6,
-            jumpPower: 14,
+            jumpPower: 4.5,
             onGround: true,
             facing: 1, // 1 = right, -1 = left
             runCycle: 0,
@@ -311,11 +349,13 @@
                 bushes: [],
                 rocks: [],
                 waterStreams: [],
+                rivers: [],
                 sheep: [],
                 butterflies: [],
                 hayBales: [],
                 stoneFences: [],
-                mushrooms: []
+                mushrooms: [],
+                forestTrees: []
             };
             
             // Generate initial clouds
@@ -563,6 +603,52 @@
                     rotation: 0
                 });
             }
+            
+            // Generate forest zones (dense trees)
+            if (isForestZone(startX + CHUNK_SIZE/2)) {
+                const numForestTrees = 8 + Math.floor(seededRandom(seed + 1200) * 8);
+                for (let i = 0; i < numForestTrees; i++) {
+                    const treeX = startX + seededRandom(seed + 1210 + i) * CHUNK_SIZE;
+                    const terrainY = getTerrainHeight(treeX);
+                    const treeTypes = ['oak', 'pine', 'birch'];
+                    worldObjects.forestTrees.push({
+                        x: treeX,
+                        y: terrainY,
+                        height: 100 + seededRandom(seed + 1220 + i) * 100,
+                        width: 60 + seededRandom(seed + 1230 + i) * 40,
+                        type: treeTypes[Math.floor(seededRandom(seed + 1240 + i) * treeTypes.length)],
+                        depth: seededRandom(seed + 1250 + i) // For parallax layering
+                    });
+                }
+                // Add extra mushrooms in forest
+                for (let i = 0; i < 5; i++) {
+                    const mushX = startX + seededRandom(seed + 1260 + i) * CHUNK_SIZE;
+                    const terrainY = getTerrainHeight(mushX);
+                    worldObjects.mushrooms.push({
+                        x: mushX,
+                        y: terrainY,
+                        size: 5 + seededRandom(seed + 1270 + i) * 8,
+                        type: seededRandom(seed + 1280 + i) > 0.7 ? 'red' : 'brown'
+                    });
+                }
+            }
+            
+            // Generate rivers (wider water bodies)
+            const riverSeed = Math.floor(startX / 3500);
+            const riverStart = riverSeed * 3500 + 1000 + seededRandom(riverSeed * 444) * 500;
+            const riverEnd = riverStart + 150 + seededRandom(riverSeed * 555) * 100;
+            
+            if (startX <= riverStart && startX + CHUNK_SIZE >= riverStart && seededRandom(riverSeed * 666) > 0.5) {
+                // Check if river hasn't been added yet
+                const riverExists = worldObjects.rivers.some(r => Math.abs(r.x - riverStart) < 50);
+                if (!riverExists) {
+                    worldObjects.rivers.push({
+                        x: riverStart,
+                        width: riverEnd - riverStart,
+                        flowOffset: seededRandom(riverSeed * 777) * Math.PI * 2
+                    });
+                }
+            }
         }
         
         function updateUI() {
@@ -682,6 +768,29 @@
                             vy: -2 - Math.random() * 3,
                             life: 20,
                             color: '#87CEEB'
+                        });
+                    }
+                }
+            }
+            
+            // River collision - deeper water, stronger slowdown
+            for (let river of worldObjects.rivers) {
+                const riverTerrainY = getTerrainHeight(river.x + river.width/2);
+                if (whippet.x + whippet.width - 15 > river.x && 
+                    whippet.x + 15 < river.x + river.width &&
+                    whippet.y + whippet.height > riverTerrainY - 10 &&
+                    whippet.onGround) {
+                    // In river - stronger slowdown
+                    whippet.velocityX *= 0.35;
+                    // More splash particles
+                    if (Math.abs(whippet.velocityX) > 0.3 && Math.random() > 0.5) {
+                        particles.push({
+                            x: whippet.x + whippet.width/2 + (Math.random() - 0.5) * 30,
+                            y: riverTerrainY,
+                            vx: (Math.random() - 0.5) * 4,
+                            vy: -3 - Math.random() * 4,
+                            life: 25,
+                            color: Math.random() > 0.5 ? '#87CEEB' : '#ADD8E6'
                         });
                     }
                 }
@@ -911,13 +1020,23 @@
                 backLeg2Angle = breathe;
             }
             
-            // Shadow on ground
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            // Shadow on ground - draw on terrain surface below player
+            const terrainBelowPlayer = getTerrainHeight(whippet.x + whippet.width/2);
+            const playerBottom = whippet.y + whippet.height;
+            const heightAboveGround = terrainBelowPlayer - playerBottom;
+            const shadowScale = Math.max(0.4, 1 - Math.abs(heightAboveGround) / 100);
+            const shadowOpacity = Math.max(0.05, 0.15 - Math.abs(heightAboveGround) / 500);
+            
+            // Draw shadow at terrain level (need to untransform to draw at correct position)
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+            const shadowScreenX = whippet.x + whippet.width/2 - camera.x;
+            const shadowScreenY = terrainBelowPlayer;
+            ctx.fillStyle = `rgba(0, 0, 0, ${shadowOpacity})`;
             ctx.beginPath();
-            const shadowY = whippet.height + (isJumping ? 10 + (whippet.y - (GROUND_Y - whippet.height)) * 0.3 : 3);
-            const shadowScale = isJumping ? 0.7 : 1;
-            ctx.ellipse(whippet.width/2, shadowY, 35 * shadowScale, 10 * shadowScale, 0, 0, Math.PI * 2);
+            ctx.ellipse(shadowScreenX, shadowScreenY, 35 * shadowScale, 10 * shadowScale, 0, 0, Math.PI * 2);
             ctx.fill();
+            ctx.restore();
             
             const bodyY = -bodyBob;
             
@@ -1357,6 +1476,25 @@
                 }
             });
             
+            // Rivers (wider water bodies)
+            worldObjects.rivers.forEach(river => {
+                const rx = river.x - camera.x;
+                if (rx > -river.width - 50 && rx < canvas.width + 50) {
+                    drawRiver(rx, river.x, river.width, river.flowOffset);
+                }
+            });
+            
+            // Forest trees (background layer - sorted by depth)
+            const sortedForestTrees = [...worldObjects.forestTrees].sort((a, b) => a.depth - b.depth);
+            sortedForestTrees.forEach(tree => {
+                if (tree.depth < 0.5) { // Background forest trees
+                    const tx = tree.x - camera.x * (0.7 + tree.depth * 0.2);
+                    if (tx > -tree.width - 50 && tx < canvas.width + tree.width + 50) {
+                        drawForestTree(tx, tree.y, tree.height, tree.width, tree.type, 0.6 + tree.depth * 0.3);
+                    }
+                }
+            });
+            
             // Mushrooms
             worldObjects.mushrooms.forEach(mushroom => {
                 const mx = mushroom.x - camera.x;
@@ -1443,6 +1581,16 @@
                 ctx.fill();
             });
             ctx.globalAlpha = 1;
+            
+            // Foreground forest trees
+            sortedForestTrees.forEach(tree => {
+                if (tree.depth >= 0.5) { // Foreground forest trees
+                    const tx = tree.x - camera.x * (0.9 + tree.depth * 0.1);
+                    if (tx > -tree.width - 50 && tx < canvas.width + tree.width + 50) {
+                        drawForestTree(tx, tree.y, tree.height * 1.1, tree.width * 1.1, tree.type, 0.85);
+                    }
+                }
+            });
             
             // Foreground grass overlay - follows terrain
             ctx.strokeStyle = '#4A7C25';
@@ -1901,6 +2049,222 @@
                     ctx.fill();
                 }
             }
+        }
+        
+        function drawRiver(screenX, worldX, width, flowOffset) {
+            const terrainY = getTerrainHeight(worldX + width/2);
+            
+            // River bed (darker, deeper)
+            ctx.fillStyle = '#3D3425';
+            ctx.beginPath();
+            ctx.moveTo(screenX - 10, terrainY + 15);
+            for (let i = 0; i <= width + 20; i += 8) {
+                const bedY = terrainY + 10 + Math.sin(i / 15 + worldX / 80) * 3;
+                ctx.lineTo(screenX + i - 10, bedY);
+            }
+            ctx.lineTo(screenX + width + 10, terrainY + 30);
+            ctx.lineTo(screenX - 10, terrainY + 30);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Main river body - deeper blue
+            const waterGrad = ctx.createLinearGradient(screenX, terrainY - 8, screenX, terrainY + 8);
+            waterGrad.addColorStop(0, 'rgba(60, 140, 180, 0.95)');
+            waterGrad.addColorStop(0.3, 'rgba(40, 100, 150, 0.9)');
+            waterGrad.addColorStop(0.7, 'rgba(30, 80, 130, 0.85)');
+            waterGrad.addColorStop(1, 'rgba(25, 60, 100, 0.8)');
+            ctx.fillStyle = waterGrad;
+            
+            ctx.beginPath();
+            ctx.moveTo(screenX - 5, terrainY + 8);
+            for (let i = 0; i <= width + 10; i += 6) {
+                const waveY = terrainY - 3 + Math.sin((i + Date.now() / 250 + flowOffset) / 12) * 3;
+                ctx.lineTo(screenX + i - 5, waveY);
+            }
+            ctx.lineTo(screenX + width + 5, terrainY + 10);
+            ctx.lineTo(screenX - 5, terrainY + 10);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Surface reflections - more prominent
+            ctx.strokeStyle = 'rgba(200, 230, 255, 0.5)';
+            ctx.lineWidth = 2;
+            for (let i = 10; i < width - 10; i += 20) {
+                const rippleX = screenX + i + Math.sin(Date.now() / 400 + i * 0.5) * 5;
+                const rippleY = terrainY - 2 + Math.sin(Date.now() / 300 + i / 8) * 2;
+                ctx.beginPath();
+                ctx.moveTo(rippleX, rippleY);
+                ctx.lineTo(rippleX + 12 + Math.random() * 6, rippleY + 1);
+                ctx.stroke();
+            }
+            
+            // Foam/current lines
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < width; i += 30) {
+                const foamX = screenX + i + (Date.now() / 50 + i) % width;
+                if (foamX < screenX + width) {
+                    ctx.beginPath();
+                    ctx.moveTo(foamX % (screenX + width), terrainY);
+                    ctx.lineTo((foamX + 15) % (screenX + width), terrainY + 1);
+                    ctx.stroke();
+                }
+            }
+            
+            // Banks with grass/reeds
+            ctx.fillStyle = '#5D7A3D';
+            ctx.beginPath();
+            ctx.ellipse(screenX - 3, terrainY + 2, 12, 6, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(screenX + width + 3, terrainY + 2, 12, 6, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Reeds on banks
+            ctx.strokeStyle = '#4A6B2A';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 3; i++) {
+                const reedX = screenX - 8 + i * 4;
+                ctx.beginPath();
+                ctx.moveTo(reedX, terrainY);
+                ctx.quadraticCurveTo(reedX + Math.sin(Date.now()/500 + i) * 3, terrainY - 15, reedX + 2, terrainY - 25);
+                ctx.stroke();
+            }
+            for (let i = 0; i < 3; i++) {
+                const reedX = screenX + width + 2 + i * 4;
+                ctx.beginPath();
+                ctx.moveTo(reedX, terrainY);
+                ctx.quadraticCurveTo(reedX + Math.sin(Date.now()/500 + i + 2) * 3, terrainY - 15, reedX - 2, terrainY - 25);
+                ctx.stroke();
+            }
+            
+            // Rocks in river
+            ctx.fillStyle = '#5A5A5A';
+            for (let i = 20; i < width - 20; i += 40) {
+                if (seededRandom(worldX + i * 2) > 0.5) {
+                    const rockSize = 6 + seededRandom(worldX + i * 3) * 8;
+                    ctx.beginPath();
+                    ctx.ellipse(screenX + i, terrainY + 2, rockSize, rockSize * 0.6, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    // Rock highlight
+                    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                    ctx.beginPath();
+                    ctx.ellipse(screenX + i - 2, terrainY, rockSize * 0.4, rockSize * 0.3, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#5A5A5A';
+                }
+            }
+        }
+        
+        function drawForestTree(x, y, height, width, type, alpha) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            
+            if (type === 'birch') {
+                // Birch tree - white bark with dark marks
+                const trunkGrad = ctx.createLinearGradient(x + width/2 - 8, y, x + width/2 + 8, y);
+                trunkGrad.addColorStop(0, '#E8E4E0');
+                trunkGrad.addColorStop(0.3, '#F5F2EF');
+                trunkGrad.addColorStop(0.7, '#F5F2EF');
+                trunkGrad.addColorStop(1, '#D8D4D0');
+                ctx.fillStyle = trunkGrad;
+                
+                // Trunk
+                ctx.beginPath();
+                ctx.moveTo(x + width/2 - 8, y);
+                ctx.lineTo(x + width/2 - 5, y - height * 0.7);
+                ctx.lineTo(x + width/2 + 5, y - height * 0.7);
+                ctx.lineTo(x + width/2 + 8, y);
+                ctx.fill();
+                
+                // Bark marks
+                ctx.fillStyle = '#2C2C2C';
+                for (let i = 0; i < 6; i++) {
+                    const markY = y - height * 0.1 - i * height * 0.1;
+                    const markWidth = 4 + seededRandom(x + i * 50) * 6;
+                    ctx.beginPath();
+                    ctx.ellipse(x + width/2 - 2 + seededRandom(x + i * 100) * 4, markY, markWidth, 2, 0.2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                // Foliage - lighter, more delicate
+                const foliageColors = ['#7CB342', '#8BC34A', '#9CCC65'];
+                for (let i = 0; i < 5; i++) {
+                    ctx.fillStyle = foliageColors[i % 3];
+                    const leafY = y - height * (0.5 + i * 0.1);
+                    const leafWidth = width * (0.3 + (5 - i) * 0.08);
+                    ctx.beginPath();
+                    ctx.ellipse(x + width/2 + (i % 2 ? 5 : -5), leafY, leafWidth, height * 0.12, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            } else if (type === 'pine') {
+                // Pine tree - taller, more triangular
+                const trunkGrad = ctx.createLinearGradient(x + width/2 - 6, y, x + width/2 + 6, y);
+                trunkGrad.addColorStop(0, '#3D2817');
+                trunkGrad.addColorStop(0.5, '#5D3A1A');
+                trunkGrad.addColorStop(1, '#3D2817');
+                ctx.fillStyle = trunkGrad;
+                ctx.fillRect(x + width/2 - 6, y - height * 0.25, 12, height * 0.28);
+                
+                // Pine layers - denser
+                const pineColors = ['#1B4D1B', '#236B23', '#2D7D2D', '#1F5F1F'];
+                for (let i = 0; i < 4; i++) {
+                    ctx.fillStyle = pineColors[i];
+                    ctx.beginPath();
+                    const layerY = y - height * 0.25 - i * height * 0.2;
+                    const layerWidth = width * (0.55 - i * 0.1);
+                    ctx.moveTo(x + width/2, layerY - height * 0.25);
+                    ctx.lineTo(x + width/2 - layerWidth, layerY);
+                    ctx.lineTo(x + width/2 + layerWidth, layerY);
+                    ctx.fill();
+                }
+            } else {
+                // Oak tree - fuller, rounder
+                const trunkGrad = ctx.createLinearGradient(x + width/2 - 12, y, x + width/2 + 12, y);
+                trunkGrad.addColorStop(0, '#4A3728');
+                trunkGrad.addColorStop(0.5, '#6B4423');
+                trunkGrad.addColorStop(1, '#4A3728');
+                ctx.fillStyle = trunkGrad;
+                
+                ctx.beginPath();
+                ctx.moveTo(x + width/2 - 14, y);
+                ctx.lineTo(x + width/2 - 10, y - height * 0.4);
+                ctx.lineTo(x + width/2 + 10, y - height * 0.4);
+                ctx.lineTo(x + width/2 + 14, y);
+                ctx.fill();
+                
+                // Branches
+                ctx.strokeStyle = '#5D3A1A';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(x + width/2, y - height * 0.35);
+                ctx.lineTo(x + width/2 - 20, y - height * 0.5);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x + width/2, y - height * 0.38);
+                ctx.lineTo(x + width/2 + 18, y - height * 0.52);
+                ctx.stroke();
+                
+                // Foliage clusters
+                const oakColors = ['#2D5016', '#3D6B22', '#4A7C25', '#5A8F2F', '#3D6B22'];
+                const positions = [
+                    { ox: 0, oy: 0.55, r: 0.35 },
+                    { ox: -0.2, oy: 0.6, r: 0.28 },
+                    { ox: 0.2, oy: 0.58, r: 0.3 },
+                    { ox: -0.1, oy: 0.7, r: 0.25 },
+                    { ox: 0.15, oy: 0.68, r: 0.27 },
+                    { ox: 0, oy: 0.75, r: 0.22 }
+                ];
+                
+                positions.forEach((pos, i) => {
+                    ctx.fillStyle = oakColors[i % oakColors.length];
+                    ctx.beginPath();
+                    ctx.arc(x + width/2 + pos.ox * width, y - height * pos.oy, width * pos.r, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+            
+            ctx.restore();
         }
         
         function drawSheep(x, y, facing, grazePhase, legPhase) {
