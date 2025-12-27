@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whippet's Countryside Adventure</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        
+        #gameContainer {
+            position: relative;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+        
+        #gameCanvas {
+            display: block;
+            background: #87CEEB;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+        
+        #ui div {
+            margin-bottom: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px 15px;
+            border-radius: 20px;
+            display: inline-block;
+        }
+        
+        #powerUpIndicator {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            color: #FFD700;
+            font-size: 16px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #FFD700;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 8px 15px;
+            border-radius: 20px;
+            display: none;
+        }
+        
+        #instructions {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 14px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.4);
+            padding: 10px 20px;
+            border-radius: 20px;
+            z-index: 10;
+        }
+        
+        #startScreen, #winScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+        }
+        
+        #startScreen h1, #winScreen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+        }
+        
+        #startScreen p, #winScreen p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 500px;
+            line-height: 1.6;
+        }
+        
+        .startBtn {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 5px 20px rgba(76, 175, 80, 0.4);
+        }
+        
+        .startBtn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(76, 175, 80, 0.6);
+        }
+        
+        #winScreen {
+            display: none;
+        }
+        
+        #winScreen h1 {
+            color: #FFD700;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1200" height="600"></canvas>
+        
+        <div id="ui">
+            <div>🦴 Treats: <span id="treatCount">0</span> / <span id="totalTreats">0</span></div>
+        </div>
+        
+        <div id="powerUpIndicator">⚡ SUPER SPEED! ⚡</div>
+        
+        <div id="instructions">
+            🎮 Arrow Keys / WASD to move | SPACE to jump | Collect all the treats!
+        </div>
+        
+        <div id="startScreen">
+            <h1>🐕 Whippet's Adventure 🐕</h1>
+            <p>You're a speedy whippet exploring the beautiful UK countryside! 
+            Collect all the treats, grab power-ups to run faster, and jump over fallen trees!</p>
+            <button class="startBtn" onclick="startGame()">Start Game</button>
+        </div>
+        
+        <div id="winScreen">
+            <h1>🎉 You Won! 🎉</h1>
+            <p>Amazing! You collected all the treats!<br>You're the best whippet ever!</p>
+            <button class="startBtn" onclick="restartGame()">Play Again</button>
+        </div>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Game state
+        let gameRunning = false;
+        let treats = [];
+        let powerUps = [];
+        let obstacles = [];
+        let particles = [];
+        let clouds = [];
+        let flowers = [];
+        let trees = [];
+        let birds = [];
+        
+        // World settings
+        const WORLD_WIDTH = 4000;
+        const WORLD_HEIGHT = 600;
+        const GROUND_HEIGHT = 120;
+        
+        // Camera
+        let camera = { x: 0, y: 0 };
+        
+        // Whippet (player)
+        const whippet = {
+            x: 100,
+            y: WORLD_HEIGHT - GROUND_HEIGHT - 60,
+            width: 70,
+            height: 50,
+            velocityX: 0,
+            velocityY: 0,
+            speed: 5,
+            jumpPower: 15,
+            onGround: true,
+            facing: 1,
+            animFrame: 0,
+            animTimer: 0,
+            powered: false,
+            powerTimer: 0,
+            shineAngle: 0
+        };
+        
+        // Input handling
+        const keys = {};
+        
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+                e.preventDefault();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+        
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            initGame();
+            gameRunning = true;
+            gameLoop();
+        }
+        
+        function restartGame() {
+            document.getElementById('winScreen').style.display = 'none';
+            initGame();
+            gameRunning = true;
+        }
+        
+        function initGame() {
+            // Reset whippet
+            whippet.x = 100;
+            whippet.y = WORLD_HEIGHT - GROUND_HEIGHT - 60;
+            whippet.velocityX = 0;
+            whippet.velocityY = 0;
+            whippet.powered = false;
+            whippet.powerTimer = 0;
+            
+            // Clear arrays
+            treats = [];
+            powerUps = [];
+            obstacles = [];
+            particles = [];
+            clouds = [];
+            flowers = [];
+            trees = [];
+            birds = [];
+            
+            // Generate clouds
+            for (let i = 0; i < 20; i++) {
+                clouds.push({
+                    x: Math.random() * WORLD_WIDTH,
+                    y: 30 + Math.random() * 100,
+                    width: 80 + Math.random() * 100,
+                    speed: 0.2 + Math.random() * 0.3
+                });
+            }
+            
+            // Generate background trees
+            for (let i = 0; i < 30; i++) {
+                trees.push({
+                    x: Math.random() * WORLD_WIDTH,
+                    height: 100 + Math.random() * 80,
+                    width: 60 + Math.random() * 40
+                });
+            }
+            trees.sort((a, b) => a.x - b.x);
+            
+            // Generate flowers
+            for (let i = 0; i < 100; i++) {
+                flowers.push({
+                    x: Math.random() * WORLD_WIDTH,
+                    y: WORLD_HEIGHT - GROUND_HEIGHT + 5 + Math.random() * 20,
+                    color: ['#FF6B6B', '#FFE66D', '#4ECDC4', '#FF8E72', '#A8E6CF'][Math.floor(Math.random() * 5)],
+                    size: 4 + Math.random() * 4
+                });
+            }
+            
+            // Generate birds
+            for (let i = 0; i < 8; i++) {
+                birds.push({
+                    x: Math.random() * WORLD_WIDTH,
+                    y: 80 + Math.random() * 150,
+                    wingPhase: Math.random() * Math.PI * 2,
+                    speed: 1 + Math.random() * 2,
+                    direction: Math.random() > 0.5 ? 1 : -1
+                });
+            }
+            
+            // Generate fallen tree obstacles
+            const obstaclePositions = [500, 1000, 1600, 2200, 2800, 3400];
+            obstaclePositions.forEach(x => {
+                obstacles.push({
+                    x: x + Math.random() * 100,
+                    y: WORLD_HEIGHT - GROUND_HEIGHT - 30,
+                    width: 120,
+                    height: 35
+                });
+            });
+            
+            // Generate treats
+            for (let i = 0; i < 25; i++) {
+                let x, y, valid;
+                do {
+                    valid = true;
+                    x = 200 + Math.random() * (WORLD_WIDTH - 400);
+                    y = WORLD_HEIGHT - GROUND_HEIGHT - 30 - Math.random() * 100;
+                    
+                    // Check not too close to obstacles
+                    for (let obs of obstacles) {
+                        if (Math.abs(x - obs.x) < 100) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                } while (!valid);
+                
+                treats.push({
+                    x: x,
+                    y: y,
+                    collected: false,
+                    bobOffset: Math.random() * Math.PI * 2
+                });
+            }
+            
+            // Generate power-ups
+            for (let i = 0; i < 5; i++) {
+                powerUps.push({
+                    x: 400 + i * 700 + Math.random() * 200,
+                    y: WORLD_HEIGHT - GROUND_HEIGHT - 50 - Math.random() * 80,
+                    collected: false,
+                    bobOffset: Math.random() * Math.PI * 2,
+                    rotation: 0
+                });
+            }
+            
+            updateUI();
+        }
+        
+        function updateUI() {
+            const collected = treats.filter(t => t.collected).length;
+            document.getElementById('treatCount').textContent = collected;
+            document.getElementById('totalTreats').textContent = treats.length;
+            
+            const powerIndicator = document.getElementById('powerUpIndicator');
+            if (whippet.powered) {
+                powerIndicator.style.display = 'block';
+            } else {
+                powerIndicator.style.display = 'none';
+            }
+        }
+        
+        function update() {
+            if (!gameRunning) return;
+            
+            const speedMultiplier = whippet.powered ? 1.8 : 1;
+            const jumpMultiplier = whippet.powered ? 1.3 : 1;
+            
+            // Handle input
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                whippet.velocityX = -whippet.speed * speedMultiplier;
+                whippet.facing = -1;
+            } else if (keys['ArrowRight'] || keys['KeyD']) {
+                whippet.velocityX = whippet.speed * speedMultiplier;
+                whippet.facing = 1;
+            } else {
+                whippet.velocityX *= 0.8;
+            }
+            
+            if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && whippet.onGround) {
+                whippet.velocityY = -whippet.jumpPower * jumpMultiplier;
+                whippet.onGround = false;
+            }
+            
+            // Apply gravity
+            whippet.velocityY += 0.6;
+            
+            // Update position
+            whippet.x += whippet.velocityX;
+            whippet.y += whippet.velocityY;
+            
+            // World boundaries
+            whippet.x = Math.max(20, Math.min(WORLD_WIDTH - whippet.width - 20, whippet.x));
+            
+            // Ground collision
+            const groundY = WORLD_HEIGHT - GROUND_HEIGHT - whippet.height;
+            if (whippet.y >= groundY) {
+                whippet.y = groundY;
+                whippet.velocityY = 0;
+                whippet.onGround = true;
+            }
+            
+            // Obstacle collision
+            for (let obs of obstacles) {
+                if (whippet.x + whippet.width > obs.x && 
+                    whippet.x < obs.x + obs.width &&
+                    whippet.y + whippet.height > obs.y &&
+                    whippet.y < obs.y + obs.height) {
+                    
+                    // Landing on top
+                    if (whippet.velocityY > 0 && whippet.y + whippet.height - whippet.velocityY <= obs.y) {
+                        whippet.y = obs.y - whippet.height;
+                        whippet.velocityY = 0;
+                        whippet.onGround = true;
+                    }
+                    // Side collision
+                    else {
+                        if (whippet.velocityX > 0) {
+                            whippet.x = obs.x - whippet.width;
+                        } else if (whippet.velocityX < 0) {
+                            whippet.x = obs.x + obs.width;
+                        }
+                    }
+                }
+            }
+            
+            // Collect treats
+            for (let treat of treats) {
+                if (!treat.collected) {
+                    const dx = (whippet.x + whippet.width/2) - treat.x;
+                    const dy = (whippet.y + whippet.height/2) - treat.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < 35) {
+                        treat.collected = true;
+                        // Create particles
+                        for (let i = 0; i < 10; i++) {
+                            particles.push({
+                                x: treat.x,
+                                y: treat.y,
+                                vx: (Math.random() - 0.5) * 8,
+                                vy: (Math.random() - 0.5) * 8,
+                                life: 30,
+                                color: '#FFD700'
+                            });
+                        }
+                        updateUI();
+                        checkWin();
+                    }
+                }
+            }
+            
+            // Collect power-ups
+            for (let powerUp of powerUps) {
+                if (!powerUp.collected) {
+                    const dx = (whippet.x + whippet.width/2) - powerUp.x;
+                    const dy = (whippet.y + whippet.height/2) - powerUp.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < 40) {
+                        powerUp.collected = true;
+                        whippet.powered = true;
+                        whippet.powerTimer = 600; // 10 seconds at 60fps
+                        // Create particles
+                        for (let i = 0; i < 20; i++) {
+                            particles.push({
+                                x: powerUp.x,
+                                y: powerUp.y,
+                                vx: (Math.random() - 0.5) * 10,
+                                vy: (Math.random() - 0.5) * 10,
+                                life: 40,
+                                color: ['#FFD700', '#FF6B6B', '#4ECDC4'][Math.floor(Math.random() * 3)]
+                            });
+                        }
+                        updateUI();
+                    }
+                }
+            }
+            
+            // Update power timer
+            if (whippet.powered) {
+                whippet.powerTimer--;
+                whippet.shineAngle += 0.1;
+                if (whippet.powerTimer <= 0) {
+                    whippet.powered = false;
+                    updateUI();
+                }
+                
+                // Trail particles when powered
+                if (Math.abs(whippet.velocityX) > 1) {
+                    particles.push({
+                        x: whippet.x + (whippet.facing === 1 ? 0 : whippet.width),
+                        y: whippet.y + whippet.height - 10,
+                        vx: -whippet.velocityX * 0.3,
+                        vy: (Math.random() - 0.5) * 2,
+                        life: 20,
+                        color: '#FFD700'
+                    });
+                }
+            }
+            
+            // Update animation
+            if (Math.abs(whippet.velocityX) > 0.5) {
+                whippet.animTimer++;
+                if (whippet.animTimer > (whippet.powered ? 3 : 5)) {
+                    whippet.animTimer = 0;
+                    whippet.animFrame = (whippet.animFrame + 1) % 4;
+                }
+            } else {
+                whippet.animFrame = 0;
+            }
+            
+            // Update particles
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.2;
+                p.life--;
+                return p.life > 0;
+            });
+            
+            // Update clouds
+            clouds.forEach(cloud => {
+                cloud.x += cloud.speed;
+                if (cloud.x > WORLD_WIDTH + 100) {
+                    cloud.x = -cloud.width;
+                }
+            });
+            
+            // Update birds
+            birds.forEach(bird => {
+                bird.x += bird.speed * bird.direction;
+                bird.wingPhase += 0.2;
+                if (bird.x > WORLD_WIDTH + 50) bird.x = -50;
+                if (bird.x < -50) bird.x = WORLD_WIDTH + 50;
+            });
+            
+            // Update camera
+            const targetCameraX = whippet.x - canvas.width / 2 + whippet.width / 2;
+            camera.x += (targetCameraX - camera.x) * 0.1;
+            camera.x = Math.max(0, Math.min(WORLD_WIDTH - canvas.width, camera.x));
+        }
+        
+        function checkWin() {
+            if (treats.every(t => t.collected)) {
+                gameRunning = false;
+                document.getElementById('winScreen').style.display = 'flex';
+            }
+        }
+        
+        function drawWhippet() {
+            ctx.save();
+            const screenX = whippet.x - camera.x;
+            const screenY = whippet.y;
+            
+            // Shine effect when powered
+            if (whippet.powered) {
+                const gradient = ctx.createRadialGradient(
+                    screenX + whippet.width/2, screenY + whippet.height/2, 0,
+                    screenX + whippet.width/2, screenY + whippet.height/2, 60
+                );
+                gradient.addColorStop(0, 'rgba(255, 215, 0, 0.4)');
+                gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(screenX + whippet.width/2, screenY + whippet.height/2, 60, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Sparkles
+                for (let i = 0; i < 5; i++) {
+                    const angle = whippet.shineAngle + (i * Math.PI * 2 / 5);
+                    const sparkleX = screenX + whippet.width/2 + Math.cos(angle) * 45;
+                    const sparkleY = screenY + whippet.height/2 + Math.sin(angle) * 35;
+                    ctx.fillStyle = '#FFD700';
+                    ctx.beginPath();
+                    ctx.arc(sparkleX, sparkleY, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            ctx.translate(screenX + whippet.width/2, screenY + whippet.height/2);
+            ctx.scale(whippet.facing, 1);
+            ctx.translate(-whippet.width/2, -whippet.height/2);
+            
+            // Leg animation offsets
+            const legOffsets = [
+                [0, 0, 0, 0],
+                [5, -3, -5, 3],
+                [0, 0, 0, 0],
+                [-5, 3, 5, -3]
+            ][whippet.animFrame];
+            
+            // Shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.beginPath();
+            ctx.ellipse(whippet.width/2, whippet.height + 5, 30, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Back legs
+            ctx.fillStyle = '#F5F5DC';
+            ctx.fillRect(45 + legOffsets[2], 35, 8, 18);
+            ctx.fillRect(55 + legOffsets[3], 35, 8, 18);
+            
+            // Tail
+            ctx.strokeStyle = '#F5F5DC';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(65, 20);
+            const tailWag = Math.sin(Date.now() / 100) * 5;
+            ctx.quadraticCurveTo(75 + tailWag, 10, 70 + tailWag, 0);
+            ctx.stroke();
+            
+            // Body
+            ctx.fillStyle = '#F5F5DC'; // Cream/white
+            ctx.beginPath();
+            ctx.ellipse(35, 25, 32, 18, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Brindle spots
+            ctx.fillStyle = '#8B7355';
+            ctx.beginPath();
+            ctx.ellipse(25, 20, 8, 5, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(45, 28, 6, 4, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(35, 32, 5, 3, 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Front legs
+            ctx.fillStyle = '#F5F5DC';
+            ctx.fillRect(10 + legOffsets[0], 35, 8, 18);
+            ctx.fillRect(20 + legOffsets[1], 35, 8, 18);
+            
+            // Paws
+            ctx.fillStyle = '#DDD';
+            ctx.fillRect(8 + legOffsets[0], 50, 12, 5);
+            ctx.fillRect(18 + legOffsets[1], 50, 12, 5);
+            ctx.fillRect(43 + legOffsets[2], 50, 12, 5);
+            ctx.fillRect(53 + legOffsets[3], 50, 12, 5);
+            
+            // Neck
+            ctx.fillStyle = '#F5F5DC';
+            ctx.beginPath();
+            ctx.moveTo(5, 15);
+            ctx.quadraticCurveTo(-5, 10, -5, 0);
+            ctx.lineTo(5, 0);
+            ctx.quadraticCurveTo(10, 10, 5, 15);
+            ctx.fill();
+            
+            // Head
+            ctx.fillStyle = '#F5F5DC';
+            ctx.beginPath();
+            ctx.ellipse(-5, -5, 15, 12, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Snout
+            ctx.fillStyle = '#F5F5DC';
+            ctx.beginPath();
+            ctx.ellipse(-20, -3, 12, 7, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Nose
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.ellipse(-30, -3, 4, 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Eye
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.ellipse(-8, -8, 4, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(-7, -9, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Ear
+            ctx.fillStyle = '#E8DCC8';
+            ctx.beginPath();
+            ctx.moveTo(0, -12);
+            ctx.quadraticCurveTo(10, -25, 5, -10);
+            ctx.fill();
+            
+            // Brindle spot on head
+            ctx.fillStyle = '#8B7355';
+            ctx.beginPath();
+            ctx.ellipse(-2, -2, 5, 4, 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        function draw() {
+            // Sky gradient
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, WORLD_HEIGHT - GROUND_HEIGHT);
+            skyGradient.addColorStop(0, '#87CEEB');
+            skyGradient.addColorStop(0.5, '#B0E0E6');
+            skyGradient.addColorStop(1, '#E0F6FF');
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, canvas.width, WORLD_HEIGHT - GROUND_HEIGHT);
+            
+            // Sun
+            const sunX = 100 - camera.x * 0.1;
+            ctx.fillStyle = '#FFE87C';
+            ctx.beginPath();
+            ctx.arc(sunX + 50, 80, 50, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Sun rays
+            ctx.strokeStyle = 'rgba(255, 232, 124, 0.5)';
+            ctx.lineWidth = 3;
+            for (let i = 0; i < 12; i++) {
+                const angle = (i / 12) * Math.PI * 2 + Date.now() / 5000;
+                ctx.beginPath();
+                ctx.moveTo(sunX + 50 + Math.cos(angle) * 60, 80 + Math.sin(angle) * 60);
+                ctx.lineTo(sunX + 50 + Math.cos(angle) * 80, 80 + Math.sin(angle) * 80);
+                ctx.stroke();
+            }
+            
+            // Clouds
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            clouds.forEach(cloud => {
+                const cx = cloud.x - camera.x * 0.3;
+                if (cx > -cloud.width && cx < canvas.width + cloud.width) {
+                    drawCloud(cx, cloud.y, cloud.width);
+                }
+            });
+            
+            // Background hills
+            ctx.fillStyle = '#90C695';
+            ctx.beginPath();
+            ctx.moveTo(0, WORLD_HEIGHT - GROUND_HEIGHT);
+            for (let x = 0; x <= canvas.width; x += 50) {
+                const worldX = x + camera.x * 0.5;
+                const hillHeight = Math.sin(worldX / 300) * 40 + Math.sin(worldX / 150) * 20 + 60;
+                ctx.lineTo(x, WORLD_HEIGHT - GROUND_HEIGHT - hillHeight);
+            }
+            ctx.lineTo(canvas.width, WORLD_HEIGHT - GROUND_HEIGHT);
+            ctx.fill();
+            
+            // Background trees
+            trees.forEach(tree => {
+                const tx = tree.x - camera.x * 0.7;
+                if (tx > -100 && tx < canvas.width + 100) {
+                    drawTree(tx, WORLD_HEIGHT - GROUND_HEIGHT - 30, tree.height, tree.width);
+                }
+            });
+            
+            // Birds
+            birds.forEach(bird => {
+                const bx = bird.x - camera.x * 0.5;
+                if (bx > -50 && bx < canvas.width + 50) {
+                    drawBird(bx, bird.y, bird.wingPhase, bird.direction);
+                }
+            });
+            
+            // Ground
+            const groundGradient = ctx.createLinearGradient(0, WORLD_HEIGHT - GROUND_HEIGHT, 0, WORLD_HEIGHT);
+            groundGradient.addColorStop(0, '#7CBA5F');
+            groundGradient.addColorStop(0.3, '#6AAF4C');
+            groundGradient.addColorStop(1, '#5A9A3C');
+            ctx.fillStyle = groundGradient;
+            ctx.fillRect(0, WORLD_HEIGHT - GROUND_HEIGHT, canvas.width, GROUND_HEIGHT);
+            
+            // Grass details
+            ctx.strokeStyle = '#5A9A3C';
+            ctx.lineWidth = 2;
+            for (let x = 0; x < canvas.width; x += 15) {
+                const worldX = x + camera.x;
+                const grassHeight = 8 + Math.sin(worldX / 20 + Date.now() / 500) * 3;
+                ctx.beginPath();
+                ctx.moveTo(x, WORLD_HEIGHT - GROUND_HEIGHT);
+                ctx.lineTo(x + 3, WORLD_HEIGHT - GROUND_HEIGHT - grassHeight);
+                ctx.stroke();
+            }
+            
+            // Flowers
+            flowers.forEach(flower => {
+                const fx = flower.x - camera.x;
+                if (fx > -10 && fx < canvas.width + 10) {
+                    ctx.fillStyle = flower.color;
+                    ctx.beginPath();
+                    ctx.arc(fx, flower.y, flower.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#FFE66D';
+                    ctx.beginPath();
+                    ctx.arc(fx, flower.y, flower.size * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+            
+            // Fallen tree obstacles
+            obstacles.forEach(obs => {
+                const ox = obs.x - camera.x;
+                if (ox > -obs.width && ox < canvas.width + obs.width) {
+                    // Log shadow
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                    ctx.beginPath();
+                    ctx.ellipse(ox + obs.width/2, obs.y + obs.height + 5, obs.width/2, 8, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Main log
+                    ctx.fillStyle = '#8B4513';
+                    ctx.beginPath();
+                    ctx.roundRect(ox, obs.y, obs.width, obs.height, 10);
+                    ctx.fill();
+                    
+                    // Bark texture
+                    ctx.strokeStyle = '#5D3A1A';
+                    ctx.lineWidth = 2;
+                    for (let i = 0; i < 5; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(ox + 20 + i * 20, obs.y + 5);
+                        ctx.lineTo(ox + 20 + i * 20, obs.y + obs.height - 5);
+                        ctx.stroke();
+                    }
+                    
+                    // End rings
+                    ctx.fillStyle = '#DEB887';
+                    ctx.beginPath();
+                    ctx.ellipse(ox + 5, obs.y + obs.height/2, 8, obs.height/2 - 3, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#8B4513';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.ellipse(ox + 5, obs.y + obs.height/2, 4, 8, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            });
+            
+            // Treats
+            treats.forEach(treat => {
+                if (!treat.collected) {
+                    const tx = treat.x - camera.x;
+                    if (tx > -20 && tx < canvas.width + 20) {
+                        const bobY = treat.y + Math.sin(Date.now() / 300 + treat.bobOffset) * 5;
+                        
+                        // Glow
+                        const glow = ctx.createRadialGradient(tx, bobY, 0, tx, bobY, 25);
+                        glow.addColorStop(0, 'rgba(255, 215, 0, 0.3)');
+                        glow.addColorStop(1, 'rgba(255, 215, 0, 0)');
+                        ctx.fillStyle = glow;
+                        ctx.beginPath();
+                        ctx.arc(tx, bobY, 25, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Bone treat
+                        ctx.fillStyle = '#F5DEB3';
+                        ctx.beginPath();
+                        ctx.roundRect(tx - 12, bobY - 5, 24, 10, 3);
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.arc(tx - 12, bobY - 2, 6, 0, Math.PI * 2);
+                        ctx.arc(tx - 12, bobY + 2, 6, 0, Math.PI * 2);
+                        ctx.arc(tx + 12, bobY - 2, 6, 0, Math.PI * 2);
+                        ctx.arc(tx + 12, bobY + 2, 6, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Shine
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                        ctx.beginPath();
+                        ctx.ellipse(tx - 5, bobY - 3, 4, 2, -0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            });
+            
+            // Power-ups
+            powerUps.forEach(powerUp => {
+                if (!powerUp.collected) {
+                    const px = powerUp.x - camera.x;
+                    if (px > -30 && px < canvas.width + 30) {
+                        const bobY = powerUp.y + Math.sin(Date.now() / 200 + powerUp.bobOffset) * 8;
+                        powerUp.rotation += 0.02;
+                        
+                        // Glow
+                        const glow = ctx.createRadialGradient(px, bobY, 0, px, bobY, 40);
+                        glow.addColorStop(0, 'rgba(255, 215, 0, 0.5)');
+                        glow.addColorStop(0.5, 'rgba(255, 100, 100, 0.3)');
+                        glow.addColorStop(1, 'rgba(255, 215, 0, 0)');
+                        ctx.fillStyle = glow;
+                        ctx.beginPath();
+                        ctx.arc(px, bobY, 40, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Star shape
+                        ctx.save();
+                        ctx.translate(px, bobY);
+                        ctx.rotate(powerUp.rotation);
+                        ctx.fillStyle = '#FFD700';
+                        ctx.beginPath();
+                        for (let i = 0; i < 5; i++) {
+                            const angle = (i * 4 * Math.PI / 5) - Math.PI / 2;
+                            const x = Math.cos(angle) * 18;
+                            const y = Math.sin(angle) * 18;
+                            if (i === 0) ctx.moveTo(x, y);
+                            else ctx.lineTo(x, y);
+                        }
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        ctx.fillStyle = '#FFF8DC';
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 8, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Lightning bolt
+                        ctx.fillStyle = '#FFD700';
+                        ctx.beginPath();
+                        ctx.moveTo(-3, -6);
+                        ctx.lineTo(2, -1);
+                        ctx.lineTo(0, 0);
+                        ctx.lineTo(3, 6);
+                        ctx.lineTo(-2, 1);
+                        ctx.lineTo(0, 0);
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        ctx.restore();
+                    }
+                }
+            });
+            
+            // Draw whippet
+            drawWhippet();
+            
+            // Particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / 40;
+                ctx.beginPath();
+                ctx.arc(p.x - camera.x, p.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+        }
+        
+        function drawCloud(x, y, width) {
+            ctx.beginPath();
+            ctx.arc(x, y, width * 0.3, 0, Math.PI * 2);
+            ctx.arc(x + width * 0.25, y - width * 0.1, width * 0.25, 0, Math.PI * 2);
+            ctx.arc(x + width * 0.5, y, width * 0.3, 0, Math.PI * 2);
+            ctx.arc(x + width * 0.25, y + width * 0.1, width * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        function drawTree(x, y, height, width) {
+            // Trunk
+            ctx.fillStyle = '#6B4423';
+            ctx.fillRect(x + width/2 - 8, y - height * 0.3, 16, height * 0.35);
+            
+            // Foliage layers
+            ctx.fillStyle = '#228B22';
+            ctx.beginPath();
+            ctx.arc(x + width/2, y - height * 0.5, width * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#2E8B2E';
+            ctx.beginPath();
+            ctx.arc(x + width/2 - 10, y - height * 0.6, width * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#3CB371';
+            ctx.beginPath();
+            ctx.arc(x + width/2 + 10, y - height * 0.65, width * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        function drawBird(x, y, wingPhase, direction) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(direction, 1);
+            
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            
+            const wingY = Math.sin(wingPhase) * 5;
+            
+            ctx.beginPath();
+            ctx.moveTo(-8, wingY);
+            ctx.quadraticCurveTo(-4, wingY - 3, 0, 0);
+            ctx.quadraticCurveTo(4, wingY - 3, 8, wingY);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Initialize but don't start
+        initGame();
+    </script>
+</body>
+</html>
